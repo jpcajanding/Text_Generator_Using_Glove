@@ -35,16 +35,18 @@ def read_data(fname):
     return content, content_array
 
 text_corpus = 'data/belling_the_cat.txt'
-tsne_path = 'data/demo1.png'
+num_glove_epoch = 100
+tsne_path = 'data/demo_' + str(num_glove_epoch) + '.png'
 
 print("Loading training data...")
 corpus, training_data = read_data(text_corpus) #tf_glove accepts a list while array needed to create dictionary
-
 print('Training GloVe vectors...')
-glove_model = tf_glove.GloVeModel(25,10) #25 dimension vectors, context taken 10 steps from word
+
+glove_dim = 25
+glove_context = 20
+glove_model = tf_glove.GloVeModel(glove_dim,glove_context) #25 dimension vectors, context taken 10 steps from word
 glove_model.fit_to_corpus(corpus)
-glove_model.train(100)
-glove_model.generate_tsne(path=tsne_path,size=(10,10),word_count=100)  #tsne for simple demo
+glove_model.train(num_glove_epoch)
 
 def build_dataset(words):
     count = collections.Counter(words).most_common()
@@ -57,10 +59,21 @@ def build_dataset(words):
     return dictionary, reverse_dictionary, glove_dictionary
 
 #create dictionary array and word to glove
+print('Building dictioanries...')
 dictionary, reverse_dictionary, glove_dictionary = build_dataset(training_data)
 
-print(glove_dictionary)
+# print(glove_dictionary)
 vocab_size = len(dictionary)
+
+# Parameters
+learning_rate = 0.001
+training_iters = 50000
+display_step = 1000
+n_input = 3
+dropout = 0.8
+
+# number of units in RNN cell
+n_hidden = 512
 
 # Parameters
 learning_rate = 0.001
@@ -73,7 +86,7 @@ n_hidden = 512
 
 
 # tf Graph input
-x = tf.placeholder("float", [None, n_input, 1])
+x = tf.placeholder("float", [None, n_input, glove_dim])
 y = tf.placeholder("float", [None, vocab_size])
 
 # RNN output node weights and biases
@@ -92,7 +105,7 @@ def RNN(x, weights, biases):
     # Generate a n_input-element sequence of inputs
     # (eg. [had] [a] [general] -> [20] [6] [33])
     x = tf.split(x,n_input,1)
-
+    x = [tf.reshape(w, [-1, glove_dim]) for w in x]
     # 2-layer LSTM, each layer has n_hidden units.
     # Average Accuracy= 95.20% at 50k iter
     rnn_cell = rnn.MultiRNNCell([rnn.BasicLSTMCell(n_hidden),rnn.BasicLSTMCell(n_hidden)])
@@ -104,7 +117,6 @@ def RNN(x, weights, biases):
 
     # generate prediction
     outputs, states = rnn.static_rnn(rnn_cell, x, dtype=tf.float32)
-
     # there are n_input outputs but
     # we only want the last output
     return tf.matmul(outputs[-1], weights['out']) + biases['out']
@@ -139,7 +151,7 @@ with tf.Session() as session:
             offset = random.randint(0, n_input+1)
 
         symbols_in_keys = [ [glove_dictionary[ str(training_data[i])]] for i in range(offset, offset+n_input) ]
-        symbols_in_keys = np.reshape(np.array(symbols_in_keys), [-1, n_input, 1])
+        symbols_in_keys = np.reshape(np.array(symbols_in_keys), [-1, n_input, glove_dim])
 
         symbols_out_onehot = np.zeros([vocab_size], dtype=float)
         symbols_out_onehot[dictionary[str(training_data[offset+n_input])]] = 1.0
